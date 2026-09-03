@@ -468,3 +468,60 @@ body[data-page="admin-ticket"].topbar-hidden .chat-admin.chat-fullpage{
   body[data-page="admin-ticket"] .chat-screen-shell,
   body[data-page="admin-ticket"] .chat-admin.chat-fullpage{transition:none}
 }
+
+/* UX17: high-visibility admin ticket queue */
+.admin-ticket-manager{overflow:hidden}
+.admin-list-head{align-items:flex-start;gap:16px}
+.admin-ticket-filters{display:flex;flex-wrap:wrap;gap:7px;justify-content:flex-end;max-width:760px}
+.admin-filter{appearance:none;border:1px solid var(--line);background:#0b1019;color:var(--muted);border-radius:999px;padding:8px 11px;font:inherit;font-size:11px;font-weight:800;cursor:pointer;transition:.18s}
+.admin-filter:hover{border-color:#43516e;color:#fff;transform:translateY(-1px)}
+.admin-filter.is-active{color:#fff;background:rgba(113,128,255,.13);border-color:rgba(113,128,255,.42);box-shadow:0 0 0 2px rgba(113,128,255,.06)}
+.admin-filter-closed.is-active{background:rgba(255,84,102,.12);border-color:rgba(255,84,102,.45);color:#ffb2ba}
+.admin-filter-closed span{display:inline-grid;place-items:center;min-width:18px;height:18px;margin-inline-start:4px;padding:0 5px;border-radius:999px;background:rgba(255,84,102,.14);font-size:10px}
+.ticket-group{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+.ticket-group.is-hidden{display:none}
+.ticket-group-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:9px}
+.ticket-group-head h3{margin:2px 0 0;font-size:14px}
+.ticket-group-head p{margin:4px 0 0;font-size:11px}
+.queue-count{display:grid;place-items:center;min-width:34px;height:28px;padding:0 9px;border-radius:999px;border:1px solid var(--line);background:#0b1019;font-size:12px;font-weight:900}
+.ticket-group-closed .queue-count{color:#ffb0b8;border-color:rgba(255,84,102,.26);background:rgba(255,84,102,.08)}
+.admin-ticket-card{position:relative;overflow:hidden;padding:15px 16px;gap:14px;transition:transform .18s,border-color .18s,opacity .18s,box-shadow .18s,background .18s}
+.admin-ticket-card::before{content:"";position:absolute;inset-block:0;inset-inline-start:0;width:4px;background:#596b87;opacity:.95}
+.admin-ticket-card.admin-ticket-mine{border-color:rgba(95,145,255,.55);background:linear-gradient(90deg,rgba(58,91,164,.16),#0b1018 28%);box-shadow:inset 0 0 0 1px rgba(95,145,255,.06),0 7px 22px rgba(0,0,0,.18)}
+.admin-ticket-card.admin-ticket-mine::before{background:#4f8cff}
+.admin-ticket-card.admin-ticket-unassigned{border-color:rgba(61,214,145,.46);background:linear-gradient(90deg,rgba(36,146,99,.12),#0b1018 28%)}
+.admin-ticket-card.admin-ticket-unassigned::before{background:#3dd691}
+.admin-ticket-card.admin-ticket-other{opacity:.5;filter:saturate(.58);background:#0a0f17;border-color:rgba(120,132,154,.22)}
+.admin-ticket-card.admin-ticket-other:hover{opacity:.78;filter:saturate(.8);border-color:rgba(120,132,154,.4)}
+.admin-ticket-card.admin-ticket-other::before{background:#647087}
+.admin-ticket-card.admin-ticket-closed{border-color:rgba(255,84,102,.42);background:linear-gradient(90deg,rgba(160,48,62,.14),#0b1018 28%)}
+.admin-ticket-card.admin-ticket-closed::before{background:#ff5466}
+.admin-ticket-main{min-width:0;flex:1}
+.admin-ticket-main strong{display:block;margin:2px 0 7px;font-size:13px;line-height:1.5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.admin-ticket-state{display:flex;align-items:center;gap:6px;min-height:19px;margin-bottom:2px}
+.ticket-tone-dot{width:8px;height:8px;border-radius:50%;background:#647087;box-shadow:0 0 0 3px rgba(100,112,135,.08);flex:0 0 auto}
+.admin-ticket-mine .ticket-tone-dot{background:#4f8cff;box-shadow:0 0 0 3px rgba(79,140,255,.12),0 0 13px rgba(79,140,255,.35)}
+.admin-ticket-unassigned .ticket-tone-dot{background:#3dd691;box-shadow:0 0 0 3px rgba(61,214,145,.11),0 0 13px rgba(61,214,145,.3)}
+.admin-ticket-other .ticket-tone-dot{background:#6f7c92}
+.admin-ticket-closed .ticket-tone-dot{background:#ff5466;box-shadow:0 0 0 3px rgba(255,84,102,.1),0 0 13px rgba(255,84,102,.26)}
+.admin-ticket-state-label{font-size:9px;letter-spacing:.07em;font-weight:900;color:#8490a4}
+.admin-ticket-mine .admin-ticket-state-label{color:#8eb5ff}.admin-ticket-unassigned .admin-ticket-state-label{color:#72e8b5}.admin-ticket-other .admin-ticket-state-label{color:#778196}.admin-ticket-closed .admin-ticket-state-label{color:#ff98a4}
+.admin-ticket-side{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex:0 0 auto;min-width:150px}
+.ticket-owner{font-size:10px;color:var(--muted);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.admin-ticket-mine .ticket-owner{color:#9dbdff;font-weight:800}.admin-ticket-unassigned .ticket-owner{color:#74e5b5}.admin-ticket-closed .ticket-owner{color:#f08d98}
+@media(max-width:760px){.admin-list-head{align-items:stretch}.admin-ticket-filters{justify-content:flex-start;max-width:none}.admin-ticket-card{align-items:flex-start;flex-direction:column}.admin-ticket-side{width:100%;align-items:flex-start;min-width:0}.ticket-owner{max-width:100%}}
+
+
+/* UX20 — role-aware support conversation */
+.permission-note{font-size:10px;line-height:1.35;color:#8792a7;max-width:260px;text-align:end;margin-inline-start:4px}
+.msg-owner .meta{color:#c2a6ff;font-weight:900}
+.msg-owner{border-inline-start:2px solid rgba(163,126,255,.42);padding-inline-start:10px}
+.composer.composer-disabled{opacity:.62}
+.composer.composer-disabled textarea{cursor:not-allowed}
+@media(max-width:760px){
+  .permission-note{max-width:190px;font-size:9px}
+}
+
+/* UX23: customer ticket chat fills the page; quick-help sidebar removed. */
+.ticket-customer-chat{grid-column:1/-1;width:100%;}
+@media(max-width:900px){.ticket-customer-chat{grid-column:auto;}}
