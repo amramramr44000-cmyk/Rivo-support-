@@ -33,6 +33,7 @@ function languageSwitcher(){return `<div class="lang-switch" aria-label="Languag
 async function rpc(name,args={}){const {data,error}=await sb.rpc(name,args);if(error){console.error('[Rivo Support]',name,error);throw error}return data}
 async function session(){return (await sb.auth.getSession()).data.session}
 async function me(){return rpc('rivo_support_me')}
+function currentUserId(ctx){return ctx?.user?.id||ctx?.session?.user?.id||null}
 async function requireAuth(){const s=await session();if(!s){location.href='login.html';return null}return s}
 async function requireAdmin(){const s=await requireAuth();if(!s)return null;const ok=await rpc('rivo_support_is_admin');if(!ok){location.href='dashboard.html';return null}return s}
 function label(key,value){const lang=getLang();const maps={ar:{status:{open:'مفتوح',pending:'بانتظار الرد',closed:'مغلق'},priority:{high:'عالية',normal:'عادية',low:'منخفضة'},category:{account:'الحساب وتسجيل الدخول',technical:'مشكلة تقنية',payment:'الدفع والاشتراكات',report:'إبلاغ عن مشكلة أو إساءة',privacy:'الخصوصية والأمان',other:'أخرى'}},en:{status:{open:'Open',pending:'Waiting for reply',closed:'Closed'},priority:{high:'High',normal:'Normal',low:'Low'},category:{account:'Account & sign in',technical:'Technical issue',payment:'Payments & subscriptions',report:'Report a problem or abuse',privacy:'Privacy & security',other:'Other'}}};return maps[lang]?.[key]?.[value]||value||''}
@@ -189,7 +190,17 @@ async function renderMessages(ctx,t){
     let url='';
     if(m.attachment_path){const signed=await sb.storage.from('rivo-support-media').createSignedUrl(m.attachment_path,3600).catch(()=>null);url=signed?.data?.signedUrl||'';}
     const body=esc(m.content||'').replace(/\n/g,'<br>');
-    const senderLabel = ctx.admin ? (m.sender_id===ctx.session.user.id ? (getLang()==='ar'?'أنت':'You') : (m.sender_name||'Support')) : (m.is_support || m.sender_id!==ctx.session.user.id ? (getLang()==='ar'?'دعم Rivo':'Rivo Support') : (getLang()==='ar'?'أنت':'You')); return `<div class="msg ${m.sender_id===ctx.session.user.id?'me':''}" data-message-id="${esc(m.id)}"><div class="meta">${esc(senderLabel)} · ${fmt(m.created_at)}</div><div>${body}</div>${url?`<a href="${esc(url)}" target="_blank" rel="noopener"><img src="${esc(url)}" alt="مرفق" loading="lazy"></a>`:''}</div>`;
+    let senderLabel;
+    if(ctx.admin){
+      if(m.sender_id===currentUserId(ctx)) senderLabel=getLang()==='ar'?'أنت':'You';
+      else if(m.sender_role==='owner') senderLabel=getLang()==='ar'?'المطور':'Developer';
+      else senderLabel=m.sender_name||(getLang()==='ar'?'دعم Rivo':'Rivo Support');
+    }else{
+      if(m.sender_id===currentUserId(ctx)) senderLabel=getLang()==='ar'?'أنت':'You';
+      else if(m.sender_role==='owner') senderLabel=getLang()==='ar'?'المطور':'Developer';
+      else senderLabel=getLang()==='ar'?'دعم Rivo':'Rivo Support';
+    }
+    return `<div class="msg ${m.sender_id===currentUserId(ctx)?'me':''} ${m.sender_role==='owner'?'msg-owner':''}" data-message-id="${esc(m.id)}"><div class="meta">${esc(senderLabel)} · ${fmt(m.created_at)}</div><div>${body}</div>${url?`<a href="${esc(url)}" target="_blank" rel="noopener"><img src="${esc(url)}" alt="مرفق" loading="lazy"></a>`:''}</div>`;
   }));
   box.innerHTML=items.join('')||`<div class="empty">${getLang()==='ar'?'ابدأ المحادثة مع الدعم.':'Start the conversation with support.'}</div>`;
   box.scrollTop=box.scrollHeight;
@@ -202,7 +213,14 @@ function setupComposer(ctx,id){
   form.addEventListener('submit',async e=>{
     e.preventDefault();e.stopPropagation();
     if(sending)return;
-    if(ctx.admin){ const assigned=window.__rivoAssignedAdminId; const myId=ctx.session?.user?.id; const openState=window.__rivoTicketStatus; if(assigned!==myId || openState==='closed'){ toast(openState==='closed'?(getLang()==='ar'?'البلاغ مغلق.':'Ticket is closed.'):(getLang()==='ar'?'استلم البلاغ أولًا قبل الرد.':'Claim the ticket before replying.'),'error'); return; } }
+    // UX20: regular admins can reply only while this ticket is assigned to them.
+    // Owner/developer can always reply. Backend RPC enforces the same rule.
+    if(ctx.admin && window.__rivoCanReply !== true){
+      toast(window.__rivoCanReply===false
+        ? (getLang()==='ar'?'لا يمكنك الرد على هذا البلاغ. إداري آخر مستلمه أو لا تملك صلاحية هذه العملية.':'You cannot reply to this ticket. Another admin owns it or you do not have permission.')
+        : (getLang()==='ar'?'جاري التحقق من صلاحيات البلاغ...':'Checking ticket permissions...'),'error');
+      return;
+    }
     const btn=e.submitter||form.querySelector('button[type=submit]');
     const text=input.value.trim(); if(!text&&!attachment)return;
     sending=true;if(btn)btn.disabled=true;
@@ -211,7 +229,7 @@ function setupComposer(ctx,id){
       if(attachment){
         if(attachment.size>6*1024*1024)throw new Error(getLang()==='ar'?'الصورة أكبر من 6MB.':'Image is larger than 6MB.');
         if(!attachment.type.startsWith('image/'))throw new Error(getLang()==='ar'?'المسموح صور فقط.':'Only images are allowed.');
-        path=`${ctx.session.user.id}/${crypto.randomUUID()}-${attachment.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
+        path=`${currentUserId(ctx)}/${crypto.randomUUID()}-${attachment.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
         const up=await sb.storage.from('rivo-support-media').upload(path,attachment,{upsert:false,contentType:attachment.type});
         if(up.error)throw up.error;
       }
@@ -236,26 +254,94 @@ function subscribeToTicket(ctx,id,isAdmin){
   window.addEventListener('beforeunload',()=>{sb.removeChannel(channel)},{once:true});
 }
 async function admin(){
-  const ctx=await requireAdmin();if(!ctx)return;nav(true,false,true);
+  const ctx=await requireAdmin();if(!ctx)return;
+  const adminId=currentUserId(ctx);
+  if(!adminId){toast(getLang()==='ar'?'تعذر تحديد حساب الإداري الحالي. أعد تسجيل الدخول.':'Could not determine the current admin account. Please sign in again.','error');return;}
+  nav(true,false,true);
+  let activeFilter='all';
+  const activeBox=$('#adminTickets'),closedBox=$('#closedTickets'),closedSection=$('#closedTicketSection');
+  const filters=[...document.querySelectorAll('.admin-filter')];
+
   const refresh=async()=>{
     try{
-      const st=await rpc('rivo_support_admin_stats');['total','open','pending','closed','unassigned','today'].forEach(k=>{const el=$(`#stat-${k}`);if(el)el.textContent=st?.[k]??0});
-      const rows=await rpc('rivo_support_list_tickets',{p_scope:'admin',p_status:$('#filter').value,p_limit:100,p_offset:0});
-      renderAdmin(Array.isArray(rows)?rows:[],$('#adminTickets'));
+      const st=await rpc('rivo_support_admin_stats');
+      ['total','open','pending','closed','unassigned','today'].forEach(k=>{const el=$(`#stat-${k}`);if(el)el.textContent=st?.[k]??0});
+      const rows=await rpc('rivo_support_list_tickets',{p_scope:'admin',p_status:'all',p_limit:200,p_offset:0});
+      const allRows=Array.isArray(rows)?rows:[];
+      const closed=allRows.filter(t=>t.status==='closed');
+      const active=allRows.filter(t=>t.status!=='closed');
+      const mine=active.filter(t=>t.assigned_admin_id===adminId);
+      const unassigned=active.filter(t=>!t.assigned_admin_id);
+      const other=active.filter(t=>t.assigned_admin_id && t.assigned_admin_id!==adminId);
+
+      let filtered=[];
+      if(activeFilter==='mine') filtered=mine;
+      else if(activeFilter==='unassigned') filtered=unassigned;
+      else if(activeFilter==='other') filtered=other;
+      else filtered=active;
+
+      const activeTitleMap={
+        all:getLang()==='ar'?'البلاغات الحالية':'Active tickets',
+        mine:getLang()==='ar'?'البلاغات المخصصة لك':'Assigned to you',
+        unassigned:getLang()==='ar'?'البلاغات غير المستلمة':'Unassigned tickets',
+        other:getLang()==='ar'?'بلاغات عند إداريين آخرين':'Assigned to other admins'
+      };
+      const activeHead=document.querySelector('.ticket-group-active h3');
+      if(activeHead)activeHead.textContent=activeTitleMap[activeFilter]||activeTitleMap.all;
+      $('#activeQueueCount') && ($('#activeQueueCount').textContent=filtered.length);
+      $('#closedQueueCount') && ($('#closedQueueCount').textContent=closed.length);
+      $('#closedFilterCount') && ($('#closedFilterCount').textContent=closed.length);
+
+      const showClosed=activeFilter==='closed';
+      document.querySelector('.ticket-group-active')?.classList.toggle('is-hidden',showClosed);
+      closedSection?.classList.toggle('is-hidden',!showClosed);
+      if(showClosed){
+        renderAdmin(closed,closedBox,adminId);
+      }else{
+        renderAdmin(filtered,activeBox,adminId);
+      }
     }catch(err){toast(err?.message||(getLang()==='ar'?'تعذر تحميل الإدارة.':'Could not load admin data.'),'error')}
   };
-  await refresh(); $('#filter')?.addEventListener('change',refresh);
+
+  filters.forEach(btn=>btn.addEventListener('click',()=>{
+    activeFilter=btn.dataset.filter||'all';
+    filters.forEach(x=>x.classList.toggle('is-active',x===btn));
+    refresh();
+  }));
+  await refresh();
 }
-function renderAdmin(rows,el){
+function renderAdmin(rows,el,currentAdminId){
   if(!el)return;
-  if(!rows.length){el.innerHTML=`<div class="empty">${getLang()==='ar'?'لا توجد بلاغات.':'No tickets found.'}</div>`;return}
-  el.innerHTML=rows.map(t=>`<div class="ticket-item" data-id="${esc(t.id)}"><div><strong>${esc(t.subject)}</strong><div class="ticket-meta"><span>${esc(t.username||'')}</span><span>${esc(label('category',t.category))}</span><span>${fmt(t.updated_at)}</span></div></div><div class="ticket-meta"><span class="pill ${esc(t.status)}">${esc(label('status',t.status))}</span>${t.assigned_admin_username?`<span>${getLang()==='ar'?'مستلم:':'Assigned to:'} ${esc(t.assigned_admin_username)}</span>`:`<span>${getLang()==='ar'?'غير مستلم':'Unassigned'}</span>`}</div></div>`).join('');
+  if(!rows.length){el.innerHTML=`<div class="empty">${getLang()==='ar'?'لا توجد بلاغات في هذا القسم.':'No tickets in this section.'}</div>`;return}
+  el.innerHTML=rows.map(t=>{
+    const closed=t.status==='closed';
+    const mine=!closed && t.assigned_admin_id===currentAdminId;
+    const other=!closed && Boolean(t.assigned_admin_id) && !mine;
+    const unassigned=!closed && !t.assigned_admin_id;
+    const tone=closed?'closed':mine?'mine':other?'other':'unassigned';
+    const toneLabel=closed
+      ? (getLang()==='ar'?'مغلق':'Closed')
+      : mine
+        ? (getLang()==='ar'?'مسؤوليتك':'YOURS')
+        : other
+          ? (getLang()==='ar'?'مستلم من إداري آخر':'OTHER ADMIN')
+          : (getLang()==='ar'?'غير مستلم':'UNASSIGNED');
+    const owner=t.assigned_admin_username
+      ? `${getLang()==='ar'?'مستلم:':'Assigned:'} ${esc(t.assigned_admin_username)}`
+      : (getLang()==='ar'?'بانتظار إداري':'Waiting for admin');
+    return `<div class="ticket-item admin-ticket-card admin-ticket-${tone}" data-id="${esc(t.id)}" data-assignee="${tone}">
+      <div class="admin-ticket-main"><div class="admin-ticket-state"><span class="ticket-tone-dot"></span><span class="admin-ticket-state-label">${toneLabel}</span></div><strong>${esc(t.subject)}</strong><div class="ticket-meta"><span>${esc(t.username||'')}</span><span>${esc(label('category',t.category))}</span><span>${fmt(t.updated_at)}</span></div></div>
+      <div class="admin-ticket-side"><div class="ticket-meta"><span class="pill ${esc(t.status)}">${esc(label('status',t.status))}</span><span class="pill ${esc(t.priority)}">${esc(label('priority',t.priority))}</span></div><div class="ticket-owner">${owner}</div></div>
+    </div>`;
+  }).join('');
   el.querySelectorAll('[data-id]').forEach(x=>x.onclick=()=>location.href=`admin-ticket.html?id=${encodeURIComponent(x.dataset.id)}`);
 }
 async function adminTicket(){
   const sessionCtx=await requireAdmin();if(!sessionCtx)return;
   const adminUser=await me();
   const ctx={session:sessionCtx,user:adminUser,admin:true};
+  const adminId=currentUserId(ctx);
+  if(!adminId){toast(getLang()==='ar'?'تعذر تحديد حساب الإداري الحالي. أعد تسجيل الدخول.':'Could not determine the current admin account. Please sign in again.','error');return;}
   nav(true,false,true);
   const id=new URLSearchParams(location.search).get('id');if(!id){location.replace('admin.html');return}
 
@@ -263,7 +349,7 @@ async function adminTicket(){
     const box=$('#transferAdmin'); if(!box)return;
     try{
       const rows=await rpc('rivo_support_list_admins');
-      box.innerHTML=`<option value="">${getLang()==='ar'?'اختر موظفًا':'Choose agent'}</option>`+(Array.isArray(rows)?rows:[]).filter(x=>x.id!==ctx.session.user.id).map(x=>`<option value="${esc(x.id)}">${esc(x.display_name||x.username||'')}</option>`).join('');
+      box.innerHTML=`<option value="">${getLang()==='ar'?'اختر موظفًا':'Choose agent'}</option>`+(Array.isArray(rows)?rows:[]).filter(x=>x.id!==adminId).map(x=>`<option value="${esc(x.id)}">${esc(x.display_name||x.username||'')}</option>`).join('');
     }catch(e){box.innerHTML=`<option value="">${getLang()==='ar'?'تعذر تحميل الفريق':'Could not load team'}</option>`}
   }
 
@@ -278,28 +364,61 @@ async function adminTicket(){
     $('#ticketMeta').innerHTML=`<span class="pill ${esc(t.status)}">${esc(label('status',t.status))}</span><span class="pill ${esc(t.priority)}">${esc(label('priority',t.priority))}</span><span>${esc(label('category',t.category))}</span>${assignedName?`<span class="assigned-chip">${getLang()==='ar'?'المسؤول:':'Agent:'} ${esc(assignedName)}</span>`:''}`;
     await renderMessages(ctx,t);
 
-    const mine=assignedId===ctx.session.user.id;
+    const mine=assignedId===adminId;
     const other=Boolean(assignedId) && !mine;
+    const isOwner=Boolean(t.viewer_is_owner || t.permissions?.is_owner);
+    const canReply=Boolean(t.can_reply || t.permissions?.can_reply);
+    window.__rivoCanReply=canReply;
+    const canClose=Boolean(t.can_close || t.permissions?.can_close);
+    const canReopen=Boolean(t.can_reopen || t.permissions?.can_reopen);
     const claim=$('#claimTop'),release=$('#releaseBtn'),transfer=$('#transferBtn'),closeBtn=$('#closeBtn'),reopen=$('#reopenBtn'),owner=$('#actionOwner'),menu=$('#ticketActionMenu'),menuToggle=$('#actionMenuToggle');
-    // Before claim: show a single clear action outside the menu.
+
     claim?.classList.toggle('hide',Boolean(assignedId) || t.status==='closed');
-    // After claim: management actions live inside the ⋮ menu.
-    release?.classList.toggle('hide',!mine || t.status==='closed');
-    transfer?.classList.toggle('hide',!mine || t.status==='closed');
-    closeBtn?.classList.toggle('hide',!mine || t.status==='closed');
-    reopen?.classList.toggle('hide',t.status!=='closed');
-    menu?.classList.toggle('has-owner',mine || other || t.status==='closed');
-    menuToggle?.classList.toggle('hide',!assignedId && t.status!=='closed');
-    if(owner){owner.textContent=mine?(getLang()==='ar'?'مستلم بواسطتك':'Assigned to you'):other?(getLang()==='ar'?'مستلم من موظف آخر':'Assigned to another agent'):t.status==='closed'?(getLang()==='ar'?'البلاغ مغلق':'Ticket closed'):(getLang()==='ar'?'البلاغ غير مستلم':'Unassigned')}
-    const locked=other||(!mine && t.status==='closed');
-    const composer=$('#composer'); composer?.classList.toggle('composer-disabled',!mine && !!ctx.admin);
-    const sendBtn=composer?.querySelector('button[type="submit"]'); if(sendBtn){sendBtn.disabled=locked||t.status==='closed';}
-    const text=$('#chatText'); if(text){text.disabled=locked||t.status==='closed';text.placeholder=locked?(getLang()==='ar'?'استلم البلاغ أولًا للرد':'Claim the ticket to reply'):(getLang()==='ar'?'اكتب رد الدعم...':'Write your support reply...')}
-    const file=$('#file'); if(file)file.disabled=locked||t.status==='closed';
+    release?.classList.toggle('hide',!assignedId || (!mine && !isOwner));
+    transfer?.classList.toggle('hide',!isOwner || t.status==='closed');
+    closeBtn?.classList.toggle('hide',!canClose || t.status==='closed');
+    reopen?.classList.toggle('hide',!canReopen || t.status!=='closed');
+    menu?.classList.toggle('has-owner',Boolean(assignedId) || t.status==='closed');
+    menuToggle?.classList.toggle('hide',!isOwner && !assignedId && t.status!=='closed');
+    if(owner){
+      if(isOwner) owner.textContent=getLang()==='ar'?'صلاحية المالك · وصول كامل':'Owner · Full access';
+      else if(mine) owner.textContent=getLang()==='ar'?'مستلم بواسطتك · يمكنك الرد':'Assigned to you · You can reply, release, or close';
+      else if(other) owner.textContent=getLang()==='ar'?`مستلم من ${t.assigned_admin?.display_name||t.assigned_admin?.username||'موظف آخر'} · للعرض فقط`:`Assigned to ${t.assigned_admin?.display_name||t.assigned_admin?.username||'another agent'} · View only`;
+      else if(t.status==='closed') owner.textContent=getLang()==='ar'?'بلاغ مغلق · بانتظار المالك لإعادة الفتح':'Ticket closed · Owner can reopen';
+      else owner.textContent=getLang()==='ar'?'البلاغ غير مستلم':'Unassigned';
+    }
+
+    const composer=$('#composer');
+    const text=$('#chatText');
+    const file=$('#file');
+    const sendBtn=composer?.querySelector('button[type=submit]');
+    composer?.classList.toggle('composer-disabled',!canReply);
+    if(sendBtn)sendBtn.disabled=!canReply;
+    if(text){
+      text.disabled=!canReply;
+      text.placeholder=canReply
+        ? (isOwner ? (getLang()==='ar'?'اكتب رسالة المطور...':'Write as developer...') : (getLang()==='ar'?'اكتب رد الدعم...':'Write your support reply...'))
+        : (getLang()==='ar'?'هذه التذكرة مستلمة من إداري آخر. لا يمكنك الرد الآن.':'This ticket is assigned to another admin. You cannot reply right now.');
+    }
+    if(file)file.disabled=!canReply;
+    $('#permissionNote')?.replaceChildren(document.createTextNode(
+      isOwner
+        ? (getLang()==='ar'
+          ? (assignedId
+            ? 'المطور: يملك كل الصلاحيات ويمكنه إدارة البلاغ الحالي.'
+            : 'المطور: يمكنك استلام البلاغ أو تحويله أو إغلاقه من قائمة الإجراءات.')
+          : (assignedId
+            ? 'Developer: full access to the current ticket.'
+            : 'Developer: you can claim, transfer, or close this unassigned ticket from the actions menu.'))
+        : canReply
+          ? (getLang()==='ar'?'أنت المسؤول الحالي عن هذا البلاغ ويمكنك الرد عليه أو تركه أو إغلاقه.':'You own this ticket and can reply, release, or close it.')
+          : (getLang()==='ar'?'إداري آخر مستلم البلاغ — العرض فقط حتى يتركه.':'Another admin owns this ticket — view only until they release it.')
+    ));
     await loadAdmins();
   }
-  setupComposer(ctx,id);
+  window.__rivoCanReply=ctx.admin ? null : true;
   window.__renderAdminTicket=render;
+  setupComposer(ctx,id);
   try{await render();}catch(err){toast(err?.message||(getLang()==='ar'?'تعذر تحميل البلاغ.':'Could not load ticket.'),'error')}
 
   const runAction=async(btn,fn)=>{
