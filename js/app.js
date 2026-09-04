@@ -2405,7 +2405,7 @@
           <div class="profile-identity">
             <div class="profile-identity-top">
               <h1>${esc(p.displayName || p.username)}</h1>
-              <div class="profile-username profile-username-meta"><span>@${esc(p.username)}</span>${p.createdAt ? `<span class="account-since" title="تاريخ الدخول">${esc(formatLoginDate(p.createdAt))}</span>` : ""}</div>
+              <div class="profile-username profile-username-meta"><span>@${esc(p.username)}</span>${p.createdAt ? `<span class="account-since" title="منذ ">${esc(formatLoginDate(p.createdAt))}</span>` : ""}</div>
             </div>
           </div>
           <div class="profile-meta-compact">
